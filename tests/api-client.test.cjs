@@ -13,7 +13,7 @@ const javascript = ts.transpileModule(clientSource, {
   },
 }).outputText.replace(
   'import.meta.env.VITE_SUPER_ADMIN_API_BASE_URL',
-  'undefined',
+  "'https://configured-api.example.test'",
 );
 
 let clientModule;
@@ -73,12 +73,46 @@ test('parses a successful detail envelope with request ID', async () => {
   setResponse({
     body: { data: { id: 'partner-1' }, meta: { requestId: 'req-detail-1' } },
   });
-
   const result = await createClient().get('/api/v1/admin/partners/partner-1');
   assert.deepEqual(result, {
     data: { id: 'partner-1' },
     meta: { requestId: 'req-detail-1' },
   });
+});
+
+test('maps admin resources to the protected API routes and serializes list filters', async () => {
+  let requestedUrl;
+  globalThis.fetch = async (url) => {
+    requestedUrl = new URL(url);
+    return {
+      ok: true,
+      status: 200,
+      async text() {
+        return JSON.stringify({
+          data: [],
+          meta: {
+            pagination: { limit: 10, offset: 20, total: 0 },
+            requestId: 'req-products',
+          },
+        });
+      },
+    };
+  };
+
+  const result = await clientModule.listAdminResource('products', {
+    limit: 10,
+    offset: 20,
+    q: 'tea',
+    status: 'active',
+  });
+  assert.equal(requestedUrl.pathname, '/api/v1/admin/catalog/products');
+  assert.deepEqual(Object.fromEntries(requestedUrl.searchParams), {
+    limit: '10',
+    offset: '20',
+    q: 'tea',
+    status: 'active',
+  });
+  assert.deepEqual(result.meta.pagination, { limit: 10, offset: 20, total: 0 });
 });
 
 test('parses standard API errors and prefers meta.requestId', async () => {

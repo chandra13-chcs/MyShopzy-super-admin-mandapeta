@@ -31,6 +31,7 @@ const pageSize = 25
 const unavailableMessage = 'No verified Super Admin API is available. Data is shown only after an authorized API returns it.'
 
 const resourceByModule: Partial<Record<string, SupportedModule>> = {
+  dashboard: 'orders',
   orders: 'orders',
   customers: 'customers',
   partners: 'partners',
@@ -264,6 +265,7 @@ export function AdminRecordsPanel({
 }) {
   const resource = resourceByModule[moduleId]
   const availableView = activeView === 'Overview' ||
+    (moduleId === 'dashboard' && activeView === 'Recent platform orders') ||
     (moduleId === 'orders' && activeView === 'All orders') ||
     (moduleId === 'customers' && activeView === 'Customer directory') ||
     (moduleId === 'partners' && activeView === 'Partner directory') ||
@@ -319,7 +321,9 @@ export function AdminRecordsPanel({
     return () => controller.abort()
   }, [activeView, availableView, offset, requestKey, resource, search, sort])
 
-  const title = moduleId === 'partners'
+  const title = moduleId === 'dashboard'
+    ? 'Recent platform orders'
+    : moduleId === 'partners'
     ? 'Partner directory'
     : moduleId === 'products'
       ? 'Product catalogue'
