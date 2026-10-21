@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useAuth0 } from '@auth0/auth0-react'
 import { ApiClientError, listAdminResource, superAdminApi } from '../api/client'
+import { auth0Config } from '../auth/config'
 import type {
   AdminResource,
   CustomerListItem,
@@ -28,7 +30,7 @@ type StoredLoadState = {
 type SupportedModule = AdminResource
 
 const pageSize = 25
-const unavailableMessage = 'No verified Super Admin API is available. Data is shown only after an authorized API returns it.'
+const unavailableMessage = 'Sign in with an authorized Super Admin account to view protected records.'
 
 const resourceByModule: Partial<Record<string, SupportedModule>> = {
   dashboard: 'orders',
@@ -263,6 +265,12 @@ export function AdminRecordsPanel({
   activeView: string
   headings: string[]
 }) {
+  const {
+    getAccessTokenSilently,
+    isAuthenticated,
+    isLoading: isAuthLoading,
+    user,
+  } = useAuth0()
   const resource = resourceByModule[moduleId]
   const availableView = activeView === 'Overview' ||
     (moduleId === 'dashboard' && activeView === 'Recent platform orders') ||
@@ -274,11 +282,18 @@ export function AdminRecordsPanel({
   const [sort, setSort] = useState(resource ? sortByModule[resource][0].value : '')
   const [offset, setOffset] = useState(0)
   const [storedState, setStoredState] = useState<StoredLoadState | null>(null)
-  const requestKey = JSON.stringify({ resource, activeView, offset, search: search.trim(), sort })
+  const requestKey = JSON.stringify({
+    resource,
+    activeView,
+    offset,
+    search: search.trim(),
+    sort,
+    subject: isAuthenticated ? user?.sub : undefined,
+  })
   const columns = useMemo(() => dataColumns(resource ?? 'orders', headings), [headings, resource])
 
   useEffect(() => {
-    if (!resource || !availableView || !superAdminApi.isConfigured) return
+    if (!resource || !availableView || !superAdminApi.isConfigured || !isAuthenticated) return
 
     const controller = new AbortController()
     const params: ListParams = toQuery(resource, {
@@ -288,8 +303,18 @@ export function AdminRecordsPanel({
       sort,
     })
 
-    listAdminResource(resource, params, controller.signal)
+    getAccessTokenSilently({
+      authorizationParams: {
+        audience: auth0Config.audience,
+        scope: 'openid profile email',
+      },
+    })
+      .then((accessToken) => {
+        if (controller.signal.aborted) return null
+        return listAdminResource(resource, params, controller.signal, accessToken)
+      })
       .then((result) => {
+        if (!result || controller.signal.aborted) return
         setStoredState({
           key: requestKey,
           value: {
@@ -319,7 +344,17 @@ export function AdminRecordsPanel({
       })
 
     return () => controller.abort()
-  }, [activeView, availableView, offset, requestKey, resource, search, sort])
+  }, [
+    activeView,
+    availableView,
+    getAccessTokenSilently,
+    isAuthenticated,
+    offset,
+    requestKey,
+    resource,
+    search,
+    sort,
+  ])
 
   const title = moduleId === 'dashboard'
     ? 'Recent platform orders'
@@ -353,6 +388,10 @@ export function AdminRecordsPanel({
           kind: 'unavailable',
           message: 'Configure VITE_SUPER_ADMIN_API_BASE_URL. Admin routes are not registered until the approved authorization phase.',
         }
+      : isAuthLoading
+        ? { kind: 'loading' }
+      : !isAuthenticated
+        ? { kind: 'unavailable', message: unavailableMessage }
       : storedState?.key === requestKey
         ? storedState.value
         : { kind: 'loading' }

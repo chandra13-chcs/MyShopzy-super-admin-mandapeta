@@ -201,12 +201,17 @@ export class SuperAdminApiClient {
     return this.baseUrl.length > 0
   }
 
-  async list<T>(path: string, params: ListParams, signal?: AbortSignal): Promise<ApiList<T>> {
+  async list<T>(
+    path: string,
+    params: ListParams,
+    signal?: AbortSignal,
+    accessToken?: string,
+  ): Promise<ApiList<T>> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin)
     for (const [key, value] of Object.entries(params)) {
       if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
     }
-    const payload = await this.request(url.toString(), signal)
+    const payload = await this.request(url.toString(), signal, accessToken)
     if (
       !isRecord(payload) ||
       !Array.isArray(payload.data) ||
@@ -221,9 +226,9 @@ export class SuperAdminApiClient {
     return payload as ApiList<T>
   }
 
-  async get<T>(path: string, signal?: AbortSignal): Promise<ApiItem<T>> {
+  async get<T>(path: string, signal?: AbortSignal, accessToken?: string): Promise<ApiItem<T>> {
     const url = new URL(`${this.baseUrl}${path}`, window.location.origin)
-    const payload = await this.request(url.toString(), signal)
+    const payload = await this.request(url.toString(), signal, accessToken)
     if (!isRecord(payload) || !('data' in payload) || !isRecord(payload.meta)) {
       throw new ApiClientError({
         message: 'The API returned an invalid detail response.',
@@ -233,11 +238,21 @@ export class SuperAdminApiClient {
     return payload as ApiItem<T>
   }
 
-  private async request(url: string, signal?: AbortSignal): Promise<unknown> {
+  private async request(
+    url: string,
+    signal?: AbortSignal,
+    accessToken?: string,
+  ): Promise<unknown> {
     if (!this.isConfigured) {
       throw new ApiClientError({
         message: 'Configure VITE_SUPER_ADMIN_API_BASE_URL to connect an approved Super Admin API.',
         code: 'API_NOT_CONFIGURED',
+      })
+    }
+    if (!accessToken) {
+      throw new ApiClientError({
+        message: 'Sign in to an authorized Super Admin account before requesting records.',
+        code: 'AUTHENTICATION_REQUIRED',
       })
     }
 
@@ -245,7 +260,10 @@ export class SuperAdminApiClient {
     try {
       response = await fetch(url, {
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         credentials: 'omit',
         signal,
       })
@@ -303,17 +321,25 @@ export function listAdminResource<R extends AdminResource>(
   resource: R,
   params: ListParams,
   signal?: AbortSignal,
+  accessToken?: string,
 ) {
-  return superAdminApi.list<AdminRecordByResource[R]>(resourcePaths[resource], params, signal)
+  return superAdminApi.list<AdminRecordByResource[R]>(
+    resourcePaths[resource],
+    params,
+    signal,
+    accessToken,
+  )
 }
 
 export function getAdminResource<R extends AdminResource>(
   resource: R,
   id: string,
   signal?: AbortSignal,
+  accessToken?: string,
 ) {
   return superAdminApi.get<AdminDetailByResource[R]>(
     `${resourcePaths[resource]}/${encodeURIComponent(id)}`,
     signal,
+    accessToken,
   )
 }

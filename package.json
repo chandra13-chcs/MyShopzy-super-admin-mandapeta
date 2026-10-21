@@ -11,6 +11,7 @@
     "test": "node --test tests/api-client.test.cjs"
   },
   "dependencies": {
+    "@auth0/auth0-react": "^2.28.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

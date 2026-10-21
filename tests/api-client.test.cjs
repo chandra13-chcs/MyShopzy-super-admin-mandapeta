@@ -19,6 +19,7 @@ const javascript = ts.transpileModule(clientSource, {
 let clientModule;
 let originalWindow;
 let originalFetch;
+const testAccessToken = 'unit-test-access-token';
 
 test.before(async () => {
   originalWindow = globalThis.window;
@@ -59,7 +60,7 @@ test('parses a successful list envelope with pagination and request ID', async (
     },
   });
 
-  const result = await createClient().list('/api/v1/admin/orders', {});
+  const result = await createClient().list('/api/v1/admin/orders', {}, undefined, testAccessToken);
   assert.deepEqual(result, {
     data: [{ id: 'order-1' }],
     meta: {
@@ -73,17 +74,23 @@ test('parses a successful detail envelope with request ID', async () => {
   setResponse({
     body: { data: { id: 'partner-1' }, meta: { requestId: 'req-detail-1' } },
   });
-  const result = await createClient().get('/api/v1/admin/partners/partner-1');
+  const result = await createClient().get(
+    '/api/v1/admin/partners/partner-1',
+    undefined,
+    testAccessToken,
+  );
   assert.deepEqual(result, {
     data: { id: 'partner-1' },
     meta: { requestId: 'req-detail-1' },
   });
 });
 
-test('maps admin resources to the protected API routes and serializes list filters', async () => {
+test('maps all admin resources to protected routes and serializes list filters', async () => {
   let requestedUrl;
-  globalThis.fetch = async (url) => {
+  let requestedOptions;
+  globalThis.fetch = async (url, options) => {
     requestedUrl = new URL(url);
+    requestedOptions = options;
     return {
       ok: true,
       status: 200,
@@ -99,20 +106,30 @@ test('maps admin resources to the protected API routes and serializes list filte
     };
   };
 
-  const result = await clientModule.listAdminResource('products', {
-    limit: 10,
-    offset: 20,
-    q: 'tea',
-    status: 'active',
-  });
-  assert.equal(requestedUrl.pathname, '/api/v1/admin/catalog/products');
-  assert.deepEqual(Object.fromEntries(requestedUrl.searchParams), {
-    limit: '10',
-    offset: '20',
-    q: 'tea',
-    status: 'active',
-  });
-  assert.deepEqual(result.meta.pagination, { limit: 10, offset: 20, total: 0 });
+  const routes = {
+    orders: '/api/v1/admin/orders',
+    customers: '/api/v1/admin/customers',
+    partners: '/api/v1/admin/partners',
+    products: '/api/v1/admin/catalog/products',
+  };
+
+  for (const [resource, route] of Object.entries(routes)) {
+    const result = await clientModule.listAdminResource(resource, {
+      limit: 10,
+      offset: 20,
+      q: 'tea',
+      status: 'active',
+    }, undefined, 'verified-access-token');
+    assert.equal(requestedUrl.pathname, route);
+    assert.deepEqual(Object.fromEntries(requestedUrl.searchParams), {
+      limit: '10',
+      offset: '20',
+      q: 'tea',
+      status: 'active',
+    });
+    assert.equal(requestedOptions.headers.Authorization, 'Bearer verified-access-token');
+    assert.deepEqual(result.meta.pagination, { limit: 10, offset: 20, total: 0 });
+  }
 });
 
 test('parses standard API errors and prefers meta.requestId', async () => {
@@ -125,7 +142,7 @@ test('parses standard API errors and prefers meta.requestId', async () => {
   });
 
   await assert.rejects(
-    createClient().list('/api/v1/admin/products', {}),
+    createClient().list('/api/v1/admin/products', {}, undefined, testAccessToken),
     (error) => {
       assert.ok(error instanceof clientModule.ApiClientError);
       assert.equal(error.status, 400);
@@ -150,7 +167,7 @@ test('uses the documented legacy error.requestId fallback when meta ID is absent
   });
 
   await assert.rejects(
-    createClient().get('/api/v1/admin/products/product-1'),
+    createClient().get('/api/v1/admin/products/product-1', undefined, testAccessToken),
     (error) => error.requestId === 'req-legacy' && error.status === 404,
   );
 });
@@ -169,7 +186,7 @@ test('uses meta.requestId in preference to legacy error.requestId', async () => 
   });
 
   await assert.rejects(
-    createClient().get('/api/v1/admin/products/product-1'),
+    createClient().get('/api/v1/admin/products/product-1', undefined, testAccessToken),
     (error) => error.requestId === 'req-meta-preferred',
   );
 });
@@ -177,7 +194,7 @@ test('uses meta.requestId in preference to legacy error.requestId', async () => 
 test('returns safe client errors for malformed JSON and malformed success envelopes', async () => {
   setResponse({ status: 502, body: '<html>internal upstream diagnostic</html>' });
   await assert.rejects(
-    createClient().list('/api/v1/admin/orders', {}),
+    createClient().list('/api/v1/admin/orders', {}, undefined, testAccessToken),
     (error) => {
       assert.equal(error.code, 'INVALID_RESPONSE');
       assert.equal(error.status, 502);
@@ -189,14 +206,14 @@ test('returns safe client errors for malformed JSON and malformed success envelo
 
   setResponse({ body: { data: [], meta: { requestId: 'req-no-pagination' } } });
   await assert.rejects(
-    createClient().list('/api/v1/admin/orders', {}),
+    createClient().list('/api/v1/admin/orders', {}, undefined, testAccessToken),
     (error) => error.code === 'INVALID_RESPONSE' &&
       error.message === 'The API returned an invalid list response.',
   );
 
   setResponse({ body: { data: { id: 'product-1' } } });
   await assert.rejects(
-    createClient().get('/api/v1/admin/products/product-1'),
+    createClient().get('/api/v1/admin/products/product-1', undefined, testAccessToken),
     (error) => error.code === 'INVALID_RESPONSE' &&
       error.message === 'The API returned an invalid detail response.',
   );
@@ -209,7 +226,7 @@ test('uses generic HTTP failure details when the error envelope is malformed', a
   });
 
   await assert.rejects(
-    createClient().get('/api/v1/admin/products/product-1'),
+    createClient().get('/api/v1/admin/products/product-1', undefined, testAccessToken),
     (error) => {
       assert.equal(error.status, 503);
       assert.equal(error.code, 'HTTP_ERROR');
@@ -229,7 +246,7 @@ test('does not expose network exception details or send credentials', async () =
   };
 
   await assert.rejects(
-    createClient().get('/api/v1/admin/products/product-1'),
+    createClient().get('/api/v1/admin/products/product-1', undefined, testAccessToken),
     (error) => {
       assert.equal(error.code, 'NETWORK_ERROR');
       assert.equal(error.message, 'The Super Admin API could not be reached.');
@@ -238,5 +255,22 @@ test('does not expose network exception details or send credentials', async () =
     },
   );
   assert.equal(requestOptions.credentials, 'omit');
-  assert.deepEqual(requestOptions.headers, { Accept: 'application/json' });
+  assert.deepEqual(requestOptions.headers, {
+    Accept: 'application/json',
+    Authorization: `Bearer ${testAccessToken}`,
+  });
+});
+
+test('refuses protected requests without an access token', async () => {
+  let requested = false;
+  globalThis.fetch = async () => {
+    requested = true;
+    throw new Error('Protected request should not be sent.');
+  };
+
+  await assert.rejects(
+    createClient().list('/api/v1/admin/orders', {}),
+    (error) => error.code === 'AUTHENTICATION_REQUIRED',
+  );
+  assert.equal(requested, false);
 });

@@ -3,6 +3,9 @@ import type { KeyboardEvent, ReactNode } from 'react'
 import type { TableColumn } from './components/DataTable'
 import { AdminRecordsPanel } from './components/AdminRecordsPanel'
 import { ModuleAnalytics } from './components/ModuleAnalytics'
+import { AuthControls } from './auth/AuthControls'
+import { PartnersPage } from './components/PartnersPage'
+import { isDemoMode } from './config/env'
 import './App.css'
 
 type IconName =
@@ -66,10 +69,10 @@ const modules: ModuleDefinition[] = [
   },
   {
     id: 'partners',
-    label: 'Partners & onboarding',
+    label: 'Partners',
     icon: 'store',
     eyebrow: 'MARKETPLACE',
-    description: 'Review partner applications and manage partner and shop lifecycle.',
+    description: 'Manage partner accounts and open partner portals.',
     features: ['Partner directory', 'Onboarding applications', 'Approval review', 'Activation & suspension'],
     columns: ['Partner', 'Partner ID', 'Type', 'Submitted', 'Status'],
     filters: ['Partner type', 'Review status', 'Service area'],
@@ -663,13 +666,33 @@ function RecordsPanel({
 }
 
 function App() {
-  const [activeModuleId, setActiveModuleId] = useState('dashboard')
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
+  const [activeModuleId, setActiveModuleId] = useState(
+    () => window.location.pathname.startsWith('/partners') ? 'partners' : 'dashboard',
+  )
   const [activeView, setActiveView] = useState('Overview')
   const [globalSearch, setGlobalSearch] = useState('')
   const [confirmationOpen, setConfirmationOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const closeConfirmationPreview = useCallback(() => setConfirmationOpen(false), [])
   const activeModule = modules.find((module) => module.id === activeModuleId) ?? modules[0]
+  const isPartnersRoute = currentPath === '/partners' || currentPath === '/partners/new'
+
+  useEffect(() => {
+    function restoreRoute() {
+      const path = window.location.pathname
+      const stateModuleId = window.history.state?.moduleId
+      const restoredModule = modules.find((module) => module.id === stateModuleId)
+      const nextModuleId = restoredModule?.id ?? (path.startsWith('/partners') ? 'partners' : 'dashboard')
+      setCurrentPath(path)
+      setActiveModuleId(nextModuleId)
+      setActiveView('Overview')
+    }
+
+    window.addEventListener('popstate', restoreRoute)
+    return () => window.removeEventListener('popstate', restoreRoute)
+  }, [])
+
   const searchResults = globalSearch.trim()
     ? modules.filter((module) =>
         `${module.label} ${module.description} ${module.features.join(' ')}`
@@ -679,10 +702,20 @@ function App() {
     : []
 
   function openModule(moduleId: string) {
+    const path = moduleId === 'partners' ? '/partners' : '/'
+    window.history.pushState({ moduleId }, '', path)
+    setCurrentPath(path)
     setActiveModuleId(moduleId)
     setActiveView('Overview')
     setGlobalSearch('')
     setMobileNavOpen(false)
+  }
+
+  function navigatePartners(path: string) {
+    window.history.pushState({ moduleId: 'partners' }, '', path)
+    setCurrentPath(path)
+    setActiveModuleId('partners')
+    setActiveView('Overview')
   }
 
   function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -773,45 +806,51 @@ function App() {
             <button className="icon-button notification-button" disabled title="Notifications are not connected" type="button" aria-label="Notifications unavailable">
               <Icon name="bell" />
             </button>
-            <div className="admin-profile" aria-label="Admin profile unavailable">
-              <span className="profile-avatar">—</span>
-              <span><strong>Admin profile</strong><small>Not connected</small></span>
-            </div>
+            {!(isDemoMode && isPartnersRoute) && <AuthControls />}
           </div>
         </header>
 
         <main className="page-content">
-          <div className="page-heading">
-            <div>
-              <div className="page-kicker">MYSHOPZY <span>/</span> {activeModule.eyebrow}</div>
-              <h1>{activeModule.label}</h1>
-              <p>{activeModule.description}</p>
-            </div>
-            <span className="connection-badge"><span /> API unavailable</span>
-          </div>
+          {isPartnersRoute ? (
+            <PartnersPage
+              isCreateRoute={currentPath === '/partners/new'}
+              onNavigate={navigatePartners}
+            />
+          ) : (
+            <>
+              <div className="page-heading">
+                <div>
+                  <div className="page-kicker">MYSHOPZY <span>/</span> {activeModule.eyebrow}</div>
+                  <h1>{activeModule.label}</h1>
+                  <p>{activeModule.description}</p>
+                </div>
+                <span className="connection-badge"><span /> API unavailable</span>
+              </div>
 
-          {activeModule.features.length > 1 && (
-            <nav className="workspace-tabs workspace-tabs-top" aria-label={`${activeModule.label} sections`}>
-              {workspaceViews.map((view) => (
-                <button
-                  aria-current={activeView === view ? 'page' : undefined}
-                  className={`workspace-tab${activeView === view ? ' is-active' : ''}`}
-                  key={view}
-                  onClick={() => setActiveView(view)}
-                  type="button"
-                >
-                  {view}
-                </button>
-              ))}
-            </nav>
+              {activeModule.features.length > 1 && (
+                <nav className="workspace-tabs workspace-tabs-top" aria-label={`${activeModule.label} sections`}>
+                  {workspaceViews.map((view) => (
+                    <button
+                      aria-current={activeView === view ? 'page' : undefined}
+                      className={`workspace-tab${activeView === view ? ' is-active' : ''}`}
+                      key={view}
+                      onClick={() => setActiveView(view)}
+                      type="button"
+                    >
+                      {view}
+                    </button>
+                  ))}
+                </nav>
+              )}
+
+              <ModuleWorkspace
+                activeView={activeView}
+                module={activeModule}
+                onConfirmationPreview={() => setConfirmationOpen(true)}
+                onViewChange={setActiveView}
+              />
+            </>
           )}
-
-          <ModuleWorkspace
-            activeView={activeView}
-            module={activeModule}
-            onConfirmationPreview={() => setConfirmationOpen(true)}
-            onViewChange={setActiveView}
-          />
 
           <footer className="page-footer">
             <span>© 2026 MyShopzy</span><span>•</span><span>Super Admin website UI · No live platform data</span>
