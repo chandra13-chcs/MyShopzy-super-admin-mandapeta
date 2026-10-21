@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { DataTable } from './DataTable'
 import type { TableColumn } from './DataTable'
-import { createPartner, listPartners } from '../services/api/partners'
+import {
+  clearDemoPartners as clearDemoPartnerStorage,
+  createPartner,
+  listPartners,
+} from '../services/api/partners'
 import type { CreatePartnerInput, Partner, PartnerType } from '../services/api/partners'
 import { isDemoMode, partnerPortalUrl } from '../config/env'
 
@@ -97,6 +101,26 @@ function formatDate(value: string) {
 
 const portalUrlError = 'Partner portal URL is not set up. Set VITE_PARTNER_PORTAL_URL to the partner portal address (different from this app).'
 
+function getPortalUrlError() {
+  try {
+    if (!partnerPortalUrl) return portalUrlError
+    const portalUrl = new URL(partnerPortalUrl)
+    if (
+      (portalUrl.protocol !== 'http:' && portalUrl.protocol !== 'https:') ||
+      portalUrl.origin === window.location.origin
+    ) {
+      return portalUrlError
+    }
+  } catch {
+    return portalUrlError
+  }
+  return ''
+}
+
+function buildPartnerPortalUrl(partner: Partner) {
+  return `${partnerPortalUrl.replace(/\/+$/, '')}/?partnerId=${partner.partnerId}&type=${partner.type}&name=${encodeURIComponent(partner.businessName)}&shop=${encodeURIComponent(partner.shopName)}`
+}
+
 function PartnerPortalButton({
   partner,
   variant = 'secondary',
@@ -105,34 +129,47 @@ function PartnerPortalButton({
   variant?: 'primary' | 'secondary'
 }) {
   const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
 
   function openPortal() {
     setError('')
-    let portalUrl: URL
-    try {
-      if (!partnerPortalUrl) throw new Error('Missing portal URL')
-      portalUrl = new URL(partnerPortalUrl)
-      if (
-        (portalUrl.protocol !== 'http:' && portalUrl.protocol !== 'https:') ||
-        portalUrl.origin === window.location.origin
-      ) {
-        throw new Error('Invalid portal URL')
-      }
-    } catch {
+    setCopied(false)
+    if (getPortalUrlError()) {
       setError(portalUrlError)
       return
     }
 
-    const url = `${partnerPortalUrl.replace(/\/+$/, '')}/?partnerId=${partner.partnerId}&type=${partner.type}&name=${encodeURIComponent(partner.businessName)}&shop=${encodeURIComponent(partner.shopName)}`
-    window.open(url, '_blank', 'noopener,noreferrer')
+    window.open(buildPartnerPortalUrl(partner), '_blank', 'noopener,noreferrer')
+  }
+
+  async function copyPortalLink() {
+    setError('')
+    setCopied(false)
+    if (getPortalUrlError()) {
+      setError(portalUrlError)
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(buildPartnerPortalUrl(partner))
+      setCopied(true)
+    } catch {
+      setError('Unable to copy the portal link. Check browser clipboard permissions and try again.')
+    }
   }
 
   return (
     <div className="partner-portal-action">
-      <button className={`button-${variant} partner-portal-link`} onClick={openPortal} type="button">
-        Open partner portal
-      </button>
+      <div className="partner-portal-buttons">
+        <button className={`button-${variant} partner-portal-link`} onClick={openPortal} type="button">
+          Open partner portal
+        </button>
+        <button className="button-secondary partner-portal-link" onClick={() => void copyPortalLink()} type="button">
+          Copy portal link
+        </button>
+      </div>
       {error && <small className="partner-portal-error" role="alert">{error}</small>}
+      {copied && <small role="status">Portal link copied.</small>}
     </div>
   )
 }
@@ -160,6 +197,17 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
   const [submitting, setSubmitting] = useState(false)
   const [createdPartner, setCreatedPartner] = useState<Partner | null>(null)
   const submittingRef = useRef(false)
+
+  function clearPartners() {
+    if (!window.confirm('Clear all demo partners from this browser?')) return
+    try {
+      clearDemoPartnerStorage()
+      setLoadAttempt((attempt) => attempt + 1)
+    } catch (error) {
+      setLoadError(errorMessage(error))
+      setLoadState('error')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -257,9 +305,18 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
           <div className="page-kicker">MYSHOPZY <span>/</span> MARKETPLACE</div>
           <h1>{isCreateRoute ? 'Add partner' : 'Partners'}</h1>
           <p>{isCreateRoute ? 'Create a partner account and prepare its starting catalogue.' : 'Manage partner accounts and open their partner portals.'}</p>
+          {!isCreateRoute && isDemoMode && (
+            <div className="partner-portal-config">
+              <p>Portal URL: {partnerPortalUrl || '(empty)'}</p>
+              {getPortalUrlError() && <small className="partner-portal-warning" role="alert">{portalUrlError}</small>}
+            </div>
+          )}
         </div>
         <div className="partner-heading-actions">
           {isDemoMode && <span className="partner-demo-badge">Demo data</span>}
+          {!isCreateRoute && isDemoMode && (
+            <button className="button-secondary" onClick={clearPartners} type="button">Clear demo partners</button>
+          )}
           {isCreateRoute ? (
             <button className="button-secondary" onClick={() => onNavigate('/partners')} type="button">Back to partners</button>
           ) : (

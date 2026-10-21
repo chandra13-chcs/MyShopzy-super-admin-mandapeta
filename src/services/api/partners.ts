@@ -92,3 +92,8 @@ export async function createPartner(input: CreatePartnerInput): Promise<Partner>
   window.localStorage.setItem(storageKey, JSON.stringify([partner, ...partners]))
   return partner
 }
+
+export function clearDemoPartners(): void {
+  if (!isDemoMode) requireDemoMode()
+  window.localStorage.removeItem(storageKey)
+}
