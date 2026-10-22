@@ -9,6 +9,7 @@ import {
 } from '../services/api/partners'
 import type { CreatePartnerInput, Partner, PartnerType } from '../services/api/partners'
 import { isDemoMode, partnerPortalUrl } from '../config/env'
+import { partnerCommissionRates } from '../config/partnerCommissionRates'
 
 type PartnersPageProps = {
   isCreateRoute: boolean
@@ -60,6 +61,11 @@ const partnerColumns: TableColumn<Partner>[] = [
     key: 'type',
     heading: 'Type',
     render: (partner) => <span className="partner-type-badge">{typeLabels[partner.type]}</span>,
+  },
+  {
+    key: 'commissionRate',
+    heading: 'Commission rate',
+    render: (partner) => `${partnerCommissionRates[partner.type]}%`,
   },
   { key: 'ownerEmail', heading: 'Owner email', render: (partner) => partner.ownerEmail },
   {
@@ -385,7 +391,7 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
                 </select>
                 {fieldErrors.type && <small className="partner-field-error" id="partner-type-error">{fieldErrors.type}</small>}
                 <span className="sr-only" aria-live="polite">
-                  {preview ? `Starting categories: ${preview.categories.join(', ')}. Units: ${preview.units.join(', ')}.` : ''}
+                  {preview ? `Starting categories: ${preview.categories.join(', ')}. Units: ${preview.units.join(', ')}. Commission rate: ${partnerCommissionRates[values.type]}%.` : ''}
                 </span>
               </label>
               <div className="partner-type-preview form-field-wide" aria-live="polite">
@@ -394,6 +400,7 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
                     <strong>{typeLabels[values.type]} starts with</strong>
                     <div><span>Default categories</span><p>{preview.categories.join(' · ')}</p></div>
                     <div><span>Default units</span><p>{preview.units.join(' · ')}</p></div>
+                    <div><span>Commission rate</span><p>{partnerCommissionRates[values.type]}%</p></div>
                   </>
                 ) : (
                   <p>Select a partner type to preview its default categories and units.</p>
