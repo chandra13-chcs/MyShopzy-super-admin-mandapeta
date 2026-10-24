@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import type { TableColumn } from './components/DataTable'
+import { superAdminApi } from './api/client'
 import { AdminRecordsPanel } from './components/AdminRecordsPanel'
+import { DuesPage } from './components/DuesPage'
 import { ModuleAnalytics } from './components/ModuleAnalytics'
 import { AuthControls } from './auth/AuthControls'
-import { PartnersPage } from './components/PartnersPage'
-import { isDemoMode } from './config/env'
 import './App.css'
 
 type IconName =
@@ -132,6 +132,17 @@ const modules: ModuleDefinition[] = [
     columns: ['Reference', 'Order', 'Partner', 'Method', 'Amount', 'Payment status'],
     filters: ['Payment method', 'Payment status', 'Partner', 'Date range'],
     actions: ['Reconcile payments', 'Review refund', 'Prepare settlement'],
+  },
+  {
+    id: 'dues',
+    label: 'Dues',
+    icon: 'wallet',
+    eyebrow: 'FINANCE',
+    description: 'Review customer dues, confirm balances, and record payments.',
+    features: ['Dues directory'],
+    columns: ['Customer', 'Order', 'Reason', 'Amount', 'Status', 'Rider note'],
+    filters: ['Due status', 'Date range'],
+    actions: ['Confirm due', 'Waive due', 'Record payment'],
   },
   {
     id: 'delivery',
@@ -535,6 +546,10 @@ function ModuleWorkspace({
   onViewChange: (view: string) => void
   onConfirmationPreview: () => void
 }) {
+  if (module.id === 'dues') {
+    return <DuesPage />
+  }
+
   const moduleColumns: TableColumn<UnavailableRow>[] = module.columns.map(
     (heading, index) => ({
       key: `${module.id}-${index}`,
@@ -666,9 +681,12 @@ function RecordsPanel({
 }
 
 function App() {
-  const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
   const [activeModuleId, setActiveModuleId] = useState(
-    () => window.location.pathname.startsWith('/partners') ? 'partners' : 'dashboard',
+    () => window.location.pathname.startsWith('/partners')
+      ? 'partners'
+      : window.location.pathname.startsWith('/dues')
+        ? 'dues'
+        : 'dashboard',
   )
   const [activeView, setActiveView] = useState('Overview')
   const [globalSearch, setGlobalSearch] = useState('')
@@ -676,15 +694,15 @@ function App() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const closeConfirmationPreview = useCallback(() => setConfirmationOpen(false), [])
   const activeModule = modules.find((module) => module.id === activeModuleId) ?? modules[0]
-  const isPartnersRoute = currentPath === '/partners' || currentPath === '/partners/new'
 
   useEffect(() => {
     function restoreRoute() {
       const path = window.location.pathname
       const stateModuleId = window.history.state?.moduleId
       const restoredModule = modules.find((module) => module.id === stateModuleId)
-      const nextModuleId = restoredModule?.id ?? (path.startsWith('/partners') ? 'partners' : 'dashboard')
-      setCurrentPath(path)
+      const nextModuleId = restoredModule?.id ?? (
+        path.startsWith('/partners') ? 'partners' : path.startsWith('/dues') ? 'dues' : 'dashboard'
+      )
       setActiveModuleId(nextModuleId)
       setActiveView('Overview')
     }
@@ -702,20 +720,12 @@ function App() {
     : []
 
   function openModule(moduleId: string) {
-    const path = moduleId === 'partners' ? '/partners' : '/'
+    const path = moduleId === 'partners' ? '/partners' : moduleId === 'dues' ? '/dues' : '/'
     window.history.pushState({ moduleId }, '', path)
-    setCurrentPath(path)
     setActiveModuleId(moduleId)
     setActiveView('Overview')
     setGlobalSearch('')
     setMobileNavOpen(false)
-  }
-
-  function navigatePartners(path: string) {
-    window.history.pushState({ moduleId: 'partners' }, '', path)
-    setCurrentPath(path)
-    setActiveModuleId('partners')
-    setActiveView('Overview')
   }
 
   function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -750,7 +760,10 @@ function App() {
         <div className="sidebar-bottom">
           <div className="environment-card">
             <span className="environment-dot" />
-            <span><strong>Website UI preview</strong><small>No admin API connected</small></span>
+            <span>
+              <strong>Super Admin API</strong>
+              <small>{superAdminApi.isConfigured ? 'Endpoint configured' : 'Endpoint not configured'}</small>
+            </span>
           </div>
           <div className="sidebar-version">MYSHOPZY ADMIN <span>UI PHASE</span></div>
         </div>
@@ -806,54 +819,50 @@ function App() {
             <button className="icon-button notification-button" disabled title="Notifications are not connected" type="button" aria-label="Notifications unavailable">
               <Icon name="bell" />
             </button>
-            {!(isDemoMode && isPartnersRoute) && <AuthControls />}
+            <AuthControls />
           </div>
         </header>
 
         <main className="page-content">
-          {isPartnersRoute ? (
-            <PartnersPage
-              isCreateRoute={currentPath === '/partners/new'}
-              onNavigate={navigatePartners}
-            />
-          ) : (
-            <>
-              <div className="page-heading">
-                <div>
-                  <div className="page-kicker">MYSHOPZY <span>/</span> {activeModule.eyebrow}</div>
-                  <h1>{activeModule.label}</h1>
-                  <p>{activeModule.description}</p>
-                </div>
-                <span className="connection-badge"><span /> API unavailable</span>
+          <>
+            <div className="page-heading">
+              <div>
+                <div className="page-kicker">MYSHOPZY <span>/</span> {activeModule.eyebrow}</div>
+                <h1>{activeModule.label}</h1>
+                <p>{activeModule.description}</p>
               </div>
+              <span className="connection-badge">
+                <span />
+                {superAdminApi.isConfigured ? 'API endpoint configured' : 'API endpoint missing'}
+              </span>
+            </div>
 
-              {activeModule.features.length > 1 && (
-                <nav className="workspace-tabs workspace-tabs-top" aria-label={`${activeModule.label} sections`}>
-                  {workspaceViews.map((view) => (
-                    <button
-                      aria-current={activeView === view ? 'page' : undefined}
-                      className={`workspace-tab${activeView === view ? ' is-active' : ''}`}
-                      key={view}
-                      onClick={() => setActiveView(view)}
-                      type="button"
-                    >
-                      {view}
-                    </button>
-                  ))}
-                </nav>
-              )}
+            {activeModule.features.length > 1 && (
+              <nav className="workspace-tabs workspace-tabs-top" aria-label={`${activeModule.label} sections`}>
+                {workspaceViews.map((view) => (
+                  <button
+                    aria-current={activeView === view ? 'page' : undefined}
+                    className={`workspace-tab${activeView === view ? ' is-active' : ''}`}
+                    key={view}
+                    onClick={() => setActiveView(view)}
+                    type="button"
+                  >
+                    {view}
+                  </button>
+                ))}
+              </nav>
+            )}
 
-              <ModuleWorkspace
-                activeView={activeView}
-                module={activeModule}
-                onConfirmationPreview={() => setConfirmationOpen(true)}
-                onViewChange={setActiveView}
-              />
-            </>
-          )}
+            <ModuleWorkspace
+              activeView={activeView}
+              module={activeModule}
+              onConfirmationPreview={() => setConfirmationOpen(true)}
+              onViewChange={setActiveView}
+            />
+          </>
 
           <footer className="page-footer">
-            <span>© 2026 MyShopzy</span><span>•</span><span>Super Admin website UI · No live platform data</span>
+            <span>© 2026 MyShopzy</span><span>•</span><span>Supported records require authorized API access; remaining modules are previews</span>
           </footer>
         </main>
       </div>

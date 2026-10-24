@@ -36,3 +36,27 @@ Post-Login Action must emit only a manually provisioned user ID from protected
 exports, and sensitive actions remain unavailable.
 
 Module overviews include reusable KPI and chart layouts. The SVG chart components support line/area, comparison-bar, and donut visualizations, but no production series is supplied until verified, authorized APIs exist. A dash means unavailable, not zero; financial metrics that depend on unresolved business rules remain pending. Date and category filters stay disabled until supported by an approved backend contract.
+
+## Super Admin API setup
+
+The browser app must connect to the Express API, never directly to PostgreSQL.
+For local development, set `VITE_SUPER_ADMIN_API_BASE_URL` to
+`http://localhost:3000`; set the public Auth0 values
+`VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, and `VITE_AUTH0_AUDIENCE` to the
+same tenant and API configured by the backend.
+
+The backend mounts read-only admin APIs for orders, customers, partners, and
+products only when PostgreSQL and `AUTH0_ISSUER_URL`, `AUTH0_AUDIENCE`,
+`AUTH0_ADMIN_USER_ID_CLAIM`, and `SUPER_ADMIN_ORIGIN` are configured. For the
+included Vite port, the local allowed origin is `http://localhost:5174`.
+Manually provision an active PostgreSQL user with `system_role='admin'` and
+configure an Auth0 Post-Login Action to map that user UUID from protected
+`app_metadata` into the namespaced claim. The backend verifies each JWT and
+checks the mapped active admin record on every request. No admin is created
+or granted access by the frontend.
+
+Database credentials belong only in the backend's untracked environment file;
+never add them to `VITE_` variables. Migrations are not applied automatically.
+Confirm the target database and review migrations before applying them through
+the approved operational process. Other Super Admin modules remain
+presentation-only until their APIs and authorization rules are implemented.

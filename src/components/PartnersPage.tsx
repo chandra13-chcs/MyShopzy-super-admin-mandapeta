@@ -302,7 +302,8 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
     }
   }
 
-  const preview = values.type ? typePreviews[values.type] : null
+  const selectedType = isPartnerType(values.type) ? values.type : null
+  const preview = selectedType ? typePreviews[selectedType] : null
 
   return (
     <div className="partners-page">
@@ -391,16 +392,16 @@ export function PartnersPage({ isCreateRoute, onNavigate }: PartnersPageProps) {
                 </select>
                 {fieldErrors.type && <small className="partner-field-error" id="partner-type-error">{fieldErrors.type}</small>}
                 <span className="sr-only" aria-live="polite">
-                  {preview ? `Starting categories: ${preview.categories.join(', ')}. Units: ${preview.units.join(', ')}. Commission rate: ${partnerCommissionRates[values.type]}%.` : ''}
+                  {preview && selectedType ? `Starting categories: ${preview.categories.join(', ')}. Units: ${preview.units.join(', ')}. Commission rate: ${partnerCommissionRates[selectedType]}%.` : ''}
                 </span>
               </label>
               <div className="partner-type-preview form-field-wide" aria-live="polite">
-                {preview ? (
+                {preview && selectedType ? (
                   <>
-                    <strong>{typeLabels[values.type]} starts with</strong>
+                    <strong>{typeLabels[selectedType]} starts with</strong>
                     <div><span>Default categories</span><p>{preview.categories.join(' · ')}</p></div>
                     <div><span>Default units</span><p>{preview.units.join(' · ')}</p></div>
-                    <div><span>Commission rate</span><p>{partnerCommissionRates[values.type]}%</p></div>
+                    <div><span>Commission rate</span><p>{partnerCommissionRates[selectedType]}%</p></div>
                   </>
                 ) : (
                   <p>Select a partner type to preview its default categories and units.</p>
